@@ -4,7 +4,7 @@ import { Server } from "socket.io"
 import cors from "cors"
 import dotenv from "dotenv"
 import pool from "./pg.ts"
-
+import loginRouter from "./Routers/usersRouter.ts"
 dotenv.config()
 
 const app = express()
@@ -15,7 +15,7 @@ const io = new Server(server, {
 
 app.use(cors())
 app.use(express.json())
-
+app.use("/users",loginRouter)
 app.get("/", (req, res) => {
     res.json({ ok: true })
 })
