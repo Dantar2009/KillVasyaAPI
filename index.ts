@@ -5,7 +5,6 @@ import cors from "cors"
 import dotenv from "dotenv"
 import pool from "./pg.ts"
 import loginRouter from "./Routers/usersRouter.ts"
-import { disconnect } from "cluster"
 dotenv.config()
 
 const app = express()
@@ -34,7 +33,8 @@ type Room={
     id:string,
     killer:playerInfo|null,
     bodyguard:playerInfo|null,
-
+    killerText:string|null,
+    bodyguardText:string|null
 }
 
 
@@ -52,12 +52,8 @@ io.on("connection", async (socket) => {
         user=searchUser.rows[0]
         console.log("Подключился:", user.name, "Рейтинг:", user.rating)
     }
-
-    
-    
     socket.data.user = user
-    const list = rooms.filter(room => !room.killer || !room.bodyguard)
-    socket.emit("roomsList", list) 
+    socket.emit("roomsList", rooms) 
     socket.on("createRoom",async(data)=>{
         if(!socket.data.user){
             return
@@ -73,13 +69,39 @@ io.on("connection", async (socket) => {
         const newRoom:Room={
             id:Date.now().toString(),
             killer:data.role==="killer"?player:null,
-            bodyguard:data.role==="bodyguard"?player:null
+            bodyguard:data.role==="bodyguard"?player:null,
+            bodyguardText:null,
+            killerText:null
         }
         rooms.push(newRoom)
-        const list = rooms.filter(room => !room.killer || !room.bodyguard)
-        io.emit("roomsList", list) 
+        io.emit("roomsList", rooms) 
 
         socket.join(newRoom.id)
+        socket.emit("openRoom",newRoom.id)
+    })
+    socket.on("joinRoom",async(roomId)=>{
+        if(!socket.data.user){
+            return
+        }
+        const currentRoom=rooms.find(room=>room.id===roomId)
+        if(currentRoom==undefined){
+            return
+        }
+        socket.join(currentRoom.id)
+        const player:playerInfo={
+            name:socket.data.user.name,
+            rating:socket.data.user.rating
+        }
+            if (currentRoom.killer === null) {
+                currentRoom.killer = player
+            } else if (currentRoom.bodyguard === null) {
+                currentRoom.bodyguard = player
+            } else {
+                socket.emit("error", "Комната заполнена")
+                return
+            }
+            socket.emit("openRoom",roomId)
+        io.emit("roomsList", rooms) 
     })
     socket.on("disconnect", () => {
         console.log("Отключился:", socket.id)
