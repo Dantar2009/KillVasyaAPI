@@ -5,6 +5,7 @@ import cors from "cors"
 import dotenv from "dotenv"
 import pool from "./pg.ts"
 import loginRouter from "./Routers/usersRouter.ts"
+import { getRandomLocation } from "./locations.ts"
 dotenv.config()
 
 const app = express()
@@ -34,7 +35,8 @@ type Room={
     killer:playerInfo|null,
     bodyguard:playerInfo|null,
     killerText:string|null,
-    bodyguardText:string|null
+    bodyguardText:string|null,
+    location:string
 }
 
 
@@ -71,7 +73,8 @@ io.on("connection", async (socket) => {
             killer:data.role==="killer"?player:null,
             bodyguard:data.role==="bodyguard"?player:null,
             bodyguardText:null,
-            killerText:null
+            killerText:null,
+            location:getRandomLocation()
         }
         rooms.push(newRoom)
         io.emit("roomsList", rooms) 
@@ -102,6 +105,28 @@ io.on("connection", async (socket) => {
             }
             socket.emit("openRoom",roomId)
         io.emit("roomsList", rooms) 
+    })
+    socket.on("sendMessage", (data: { messageText: string, roomId: string }) => {
+        if (!socket.data.user) return
+        if (data.messageText.trim().length === 0) return
+
+        const currentRoom = rooms.find(r => r.id === data.roomId)
+        if (!currentRoom) return
+
+        if (currentRoom.killer?.name === socket.data.user.name) {
+            if (currentRoom.killerText !== null) return
+            currentRoom.killerText = data.messageText
+        }
+        else if (currentRoom.bodyguard?.name === socket.data.user.name) {
+            if (currentRoom.killerText === null) return
+            if (currentRoom.bodyguardText !== null) return
+            currentRoom.bodyguardText = data.messageText
+        }
+        else {
+            return
+        }
+
+        io.emit("roomsList", rooms)
     })
     socket.on("disconnect", () => {
         console.log("Отключился:", socket.id)
