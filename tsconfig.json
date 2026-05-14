@@ -9,7 +9,7 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": ["*.ts"],
+  "include": ["**/*.ts"],
   "exclude": ["node_modules"],
   "ts-node": {
     "esm": true

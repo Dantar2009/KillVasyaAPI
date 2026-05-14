@@ -6,8 +6,10 @@ import dotenv from "dotenv"
 import pool from "./pg.ts"
 import loginRouter from "./Routers/usersRouter.ts"
 import { getRandomLocation } from "./locations.ts"
-import askAI from "./askAI.ts"
-import getAPIKey from "./getAPIKey.ts"
+import askAI from "./utils/askAI.ts"
+import getAPIKey from "./utils/getAPIKey.ts"
+import updateRatings from "./utils/updateRating.ts"
+
 dotenv.config()
 
 const app = express()
@@ -46,12 +48,7 @@ type Room = {
     aiOtvet: string
 }
 
-type AIAnswer = {
-    winner: "killer" | "bodyguard",
-    description: string
-}
-
-const rooms: Room[] = []
+let rooms: Room[] = []
 
 io.on("connection", async (socket) => {
     const name = socket.handshake.query.name as string
@@ -99,7 +96,7 @@ io.on("connection", async (socket) => {
         if (!socket.data.user) return
 
         const currentRoom = rooms.find(room => room.id === roomId)
-        if (currentRoom == undefined) return
+        if (!currentRoom) return
 
         socket.join(currentRoom.id)
         const player: playerInfo = {
@@ -138,6 +135,7 @@ io.on("connection", async (socket) => {
             return
         }
         io.emit("roomsList", rooms)
+
         if (currentRoom.killerText !== null && currentRoom.bodyguardText !== null) {
             const aiOtvet = await askAI(
                 currentRoom.killerText,
@@ -151,10 +149,51 @@ io.on("connection", async (socket) => {
             } else {
                 currentRoom.winner = aiOtvet.winner
                 currentRoom.aiOtvet = aiOtvet.description
+
+                if (currentRoom.killer && currentRoom.bodyguard) {
+                    const isKillerWin = currentRoom.winner === "killer"
+
+                    const newRatings = updateRatings(
+                        isKillerWin ? currentRoom.killer.rating : currentRoom.bodyguard.rating,
+                        isKillerWin ? currentRoom.bodyguard.rating : currentRoom.killer.rating
+                    )
+
+                    currentRoom.killer.rating = isKillerWin ? newRatings.winner : newRatings.loser
+                    currentRoom.bodyguard.rating = isKillerWin ? newRatings.loser : newRatings.winner
+
+                    await pool.query(
+                        "UPDATE killvasyausers SET rating = $1 WHERE name = $2",
+                        [currentRoom.killer.rating, currentRoom.killer.name]
+                    )
+                    await pool.query(
+                        "UPDATE killvasyausers SET rating = $1 WHERE name = $2",
+                        [currentRoom.bodyguard.rating, currentRoom.bodyguard.name]
+                    )
+                }
             }
         }
         io.emit("roomsList", rooms)
+    })
 
+    socket.on("leaveRoom", (roomId: string) => {
+        if (!socket.data.user) return
+
+        const currentRoom = rooms.find(r => r.id === roomId)
+        if (!currentRoom) return
+
+        if (currentRoom.bodyguard?.name === socket.data.user.name) {
+            currentRoom.bodyguard = null
+        } else if (currentRoom.killer?.name === socket.data.user.name) {
+            currentRoom.killer = null
+        } else {
+            return
+        }
+
+        if (currentRoom.killer === null && currentRoom.bodyguard === null) {
+            rooms = rooms.filter(room => room.id !== currentRoom.id)
+        }
+
+        io.emit("roomsList", rooms)
     })
 
     socket.on("disconnect", () => {

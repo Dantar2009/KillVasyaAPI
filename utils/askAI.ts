@@ -1,8 +1,7 @@
-type AIAnswer = {
+export type AIAnswer = {
     winner: "killer" | "bodyguard",
     description: string
 }
-
 const askAI = async (
     killerText: string,
     bodyguardText: string,
