@@ -5,7 +5,7 @@ import cors from "cors"
 import dotenv from "dotenv"
 import pool from "./pg.ts"
 import loginRouter from "./Routers/usersRouter.ts"
-import { getRandomLocation } from "./locations.ts"
+import { getRandomLocation } from "./utils/getRandomLocation.ts"
 import askAI from "./utils/askAI.ts"
 import getAPIKey from "./utils/getAPIKey.ts"
 import updateRatings from "./utils/updateRating.ts"
@@ -43,6 +43,8 @@ type Room = {
     bodyguard: playerInfo | null,
     killerText: string | null,
     bodyguardText: string | null,
+    killerReady:boolean,
+    bodyguardReady:boolean,
     location: string,
     winner: "killer" | "bodyguard" | "nowinner",
     aiOtvet: string
@@ -81,9 +83,12 @@ io.on("connection", async (socket) => {
             bodyguard: data.role === "bodyguard" ? player : null,
             bodyguardText: null,
             killerText: null,
+            killerReady: false,
+            bodyguardReady: false,
             location: getRandomLocation(),
             winner: "nowinner",
-            aiOtvet: ""
+            aiOtvet: "",
+            
         }
         rooms.push(newRoom)
         io.emit("roomsList", rooms)
@@ -175,26 +180,64 @@ io.on("connection", async (socket) => {
         io.emit("roomsList", rooms)
     })
 
-    socket.on("leaveRoom", (roomId: string) => {
+    socket.on("leaveRoom", async(roomId: string) => {
         if (!socket.data.user) return
 
         const currentRoom = rooms.find(r => r.id === roomId)
         if (!currentRoom) return
 
-        if (currentRoom.bodyguard?.name === socket.data.user.name) {
-            currentRoom.bodyguard = null
-        } else if (currentRoom.killer?.name === socket.data.user.name) {
-            currentRoom.killer = null
-        } else {
-            return
+        // Если игра ещё не закончена — начислить победителю рейтинг
+        if (currentRoom.winner === "nowinner" && currentRoom.killer && currentRoom.bodyguard) {
+            const leaverIsKiller = currentRoom.killer.name === socket.data.user.name
+            const winner = leaverIsKiller ? currentRoom.bodyguard : currentRoom.killer
+            const loser = leaverIsKiller ? currentRoom.killer : currentRoom.bodyguard
+
+            const newRatings = updateRatings(winner.rating, loser.rating)
+            winner.rating = newRatings.winner
+            loser.rating = newRatings.loser
+
+            await pool.query("UPDATE killvasyausers SET rating = $1 WHERE name = $2", [winner.rating, winner.name])
+            await pool.query("UPDATE killvasyausers SET rating = $1 WHERE name = $2", [loser.rating, loser.name])
+            console.log("Отправляю ratingUpdate:", loser.rating)  // ✅
+            socket.emit("ratingUpdate", loser.rating)
         }
 
-        if (currentRoom.killer === null && currentRoom.bodyguard === null) {
+        if (currentRoom.killer?.name === socket.data.user.name) {
+            currentRoom.killer = null
+        } else if (currentRoom.bodyguard?.name === socket.data.user.name) {
+            currentRoom.bodyguard = null
+        }
+
+        if (!currentRoom.killer && !currentRoom.bodyguard) {
             rooms = rooms.filter(room => room.id !== currentRoom.id)
         }
 
         io.emit("roomsList", rooms)
     })
+    socket.on("ready", (roomId: string) => {
+    if (!socket.data.user) return
+
+    const currentRoom = rooms.find(r => r.id === roomId)
+    if (!currentRoom) return
+
+    if (currentRoom.killer?.name === socket.data.user.name) {
+        currentRoom.killerReady = !currentRoom.killerReady
+    } else if (currentRoom.bodyguard?.name === socket.data.user.name) {
+        currentRoom.bodyguardReady = !currentRoom.bodyguardReady
+    }
+
+    if (currentRoom.killerReady && currentRoom.bodyguardReady) {
+        currentRoom.killerText = null
+        currentRoom.bodyguardText = null
+        currentRoom.killerReady = false
+        currentRoom.bodyguardReady = false
+        currentRoom.aiOtvet = ""
+        currentRoom.winner = "nowinner"
+        currentRoom.location = getRandomLocation()
+    }
+
+    io.emit("roomsList", rooms)
+})
 
     socket.on("disconnect", () => {
         console.log("Отключился:", socket.id)
