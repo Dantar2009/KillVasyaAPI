@@ -108,6 +108,7 @@ io.on("connection", async (socket) => {
             name: socket.data.user.name,
             rating: socket.data.user.rating
         }
+        if(currentRoom.killer.name===socket.data.user?.name||currentRoom.bodyguard.name===socket.data.user?.name) return
         if (currentRoom.killer === null) {
             currentRoom.killer = player
         } else if (currentRoom.bodyguard === null) {
@@ -198,7 +199,7 @@ io.on("connection", async (socket) => {
 
             await pool.query("UPDATE killvasyausers SET rating = $1 WHERE name = $2", [winner.rating, winner.name])
             await pool.query("UPDATE killvasyausers SET rating = $1 WHERE name = $2", [loser.rating, loser.name])
-            console.log("Отправляю ratingUpdate:", loser.rating)  // ✅
+            console.log("Отправляю ratingUpdate:", loser.rating)  
             socket.emit("ratingUpdate", loser.rating)
         }
 
