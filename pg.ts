@@ -11,8 +11,13 @@ const pool = new Pool({
 pool.query(`CREATE TABLE IF NOT EXISTS killvasyausers(
     id SERIAL PRIMARY KEY,
     name VARCHAR(50) UNIQUE,
-    pass VARCHAR(50),
+    pass VARCHAR(255),
     rating INTEGER DEFAULT 1000
+);`)
+pool.query(`CREATE TABLE IF NOT EXISTS cemetery(
+    id SERIAL PRIMARY KEY,
+    date VARCHAR(50),
+    epitaph TEXT
 );`)
 pool.connect()
     .then(() => console.log("✅ БД подключена"))

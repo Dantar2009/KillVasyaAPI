@@ -18,7 +18,9 @@ const io = new Server(server, {
     cors: { origin: "*" }
 })
 
-app.use(cors())
+app.use(cors({
+    origin: [process.env.FRONTEND_URL||`http://localhost:5173`]
+}))
 app.use(express.json())
 app.use("/users", loginRouter)
 app.get("/", (req, res) => {
@@ -54,7 +56,11 @@ type RatingUser={
     name:string,
     rating:number
 }
-
+type Grave={
+    id:string,
+    date:string,
+    epitaph:string
+}
 let rooms: Room[] = []
 
 io.on("connection", async (socket) => {
@@ -63,7 +69,10 @@ io.on("connection", async (socket) => {
     const newRating=await pool.query("SELECT id, name, rating FROM killvasyausers")
     const sortedRating:RatingUser[]=newRating.rows.sort((a:RatingUser,b:RatingUser)=>b.rating-a.rating)
     console.log(sortedRating)
-    io.emit("updateRatings",sortedRating)
+    socket.emit("updateRatings",sortedRating)
+    const cemeteryObj=await pool.query(`SELECT * FROM cemetery`)
+    const cemetery:Grave[]=cemeteryObj.rows.reverse()
+    socket.emit("cemeteryUpdate",cemetery)
     const searchUser = await pool.query(
         "SELECT * FROM killvasyausers WHERE name = $1 AND pass = $2",
         [name, pass]
@@ -99,7 +108,7 @@ io.on("connection", async (socket) => {
             
         }
         rooms.push(newRoom)
-        io.emit("roomsList", rooms)
+        io.emit("createRoom", newRoom)
 
         socket.join(newRoom.id)
         socket.emit("openRoom", newRoom.id)
@@ -137,7 +146,7 @@ io.on("connection", async (socket) => {
         }
 
         socket.emit("openRoom", roomId)
-        io.emit("roomsList", rooms)
+        io.emit("updateRoom", currentRoom)
     })
 
     socket.on("sendMessage", async (data: { messageText: string, roomId: string }) => {
@@ -159,7 +168,7 @@ io.on("connection", async (socket) => {
         else {
             return
         }
-        io.emit("roomsList", rooms)
+        io.emit("updateRoom", currentRoom)
 
         if (currentRoom.killerText !== null && currentRoom.bodyguardText !== null) {
             const aiOtvet = await askAI(
@@ -194,22 +203,27 @@ io.on("connection", async (socket) => {
                         "UPDATE killvasyausers SET rating = $1 WHERE name = $2",
                         [currentRoom.bodyguard.rating, currentRoom.bodyguard.name]
                     )
+                    if(isKillerWin){
+                        const cemeteryObj=await pool.query(`SELECT * FROM cemetery`)
+                        const cemetery:Grave[]=cemeteryObj.rows
+                        io.emit("cemeteryUpdate",cemetery)
+                    }
                 }
             }
         }
-        io.emit("roomsList", rooms)
+        io.emit("updateRoom", currentRoom)
         const newRating=await pool.query("SELECT id, name, rating FROM killvasyausers")
         const sortedRating:RatingUser[]=newRating.rows.sort((a:RatingUser,b:RatingUser)=>b.rating-a.rating)
         io.emit("updateRatings",sortedRating)
+        
     })
 
-    socket.on("leaveRoom", async(roomId: string) => {
+    socket.on("leaveRoom", async (roomId: string) => {
         if (!socket.data.user) return
 
         const currentRoom = rooms.find(r => r.id === roomId)
         if (!currentRoom) return
 
-        // Если игра ещё не закончена — начислить победителю рейтинг
         if (currentRoom.winner === "nowinner" && currentRoom.killer && currentRoom.bodyguard) {
             const leaverIsKiller = currentRoom.killer.name === socket.data.user.name
             const winner = leaverIsKiller ? currentRoom.bodyguard : currentRoom.killer
@@ -221,24 +235,27 @@ io.on("connection", async (socket) => {
 
             await pool.query("UPDATE killvasyausers SET rating = $1 WHERE name = $2", [winner.rating, winner.name])
             await pool.query("UPDATE killvasyausers SET rating = $1 WHERE name = $2", [loser.rating, loser.name])
-            console.log("Отправляю ratingUpdate:", loser.rating)  
             socket.emit("ratingUpdate", loser.rating)
         }
 
         if (currentRoom.killer?.name === socket.data.user.name) {
             currentRoom.killer = null
+            currentRoom.killerReady = false  // ✅ сброс готовности
         } else if (currentRoom.bodyguard?.name === socket.data.user.name) {
             currentRoom.bodyguard = null
+            currentRoom.bodyguardReady = false  // ✅ сброс готовности
         }
 
         if (!currentRoom.killer && !currentRoom.bodyguard) {
             rooms = rooms.filter(room => room.id !== currentRoom.id)
+            io.emit("deleteRoom", roomId)  // ✅ удаление комнаты
+        } else {
+            io.emit("updateRoom", currentRoom)  // ✅ обновление комнаты
         }
 
-        io.emit("roomsList", rooms)
-        const newRating=await pool.query("SELECT id, name, rating FROM killvasyausers")
-        const sortedRating:RatingUser[]=newRating.rows.sort((a:RatingUser,b:RatingUser)=>b.rating-a.rating)
-        io.emit("updateRatings",sortedRating)
+        const newRating = await pool.query("SELECT id, name, rating FROM killvasyausers")
+        const sortedRating: RatingUser[] = newRating.rows.sort((a: RatingUser, b: RatingUser) => b.rating - a.rating)
+        io.emit("updateRatings", sortedRating)
     })
     socket.on("ready", (roomId: string) => {
     if (!socket.data.user) return
@@ -262,7 +279,7 @@ io.on("connection", async (socket) => {
         currentRoom.location = getRandomLocation()
     }
 
-    io.emit("roomsList", rooms)
+    io.emit("updateRoom", currentRoom)
 
 })
 
