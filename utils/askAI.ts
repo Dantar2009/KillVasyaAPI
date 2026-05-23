@@ -1,5 +1,5 @@
-import promptText from "../data/promptText.js"
-import pool from "../pg.js"
+import promptText from "../data/promptText.ts"
+import pool from "../pg.ts"
 
 export type AIAnswer = {
     winner: "killer" | "bodyguard",
