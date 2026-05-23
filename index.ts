@@ -3,12 +3,12 @@ import { createServer } from "http"
 import { Server } from "socket.io"
 import cors from "cors"
 import dotenv from "dotenv"
-import pool from "./pg.ts"
-import loginRouter from "./Routers/usersRouter.ts"
-import { getRandomLocation } from "./utils/getRandomLocation.ts"
-import askAI from "./utils/askAI.ts"
-import getAPIKey from "./utils/getAPIKey.ts"
-import updateRatings from "./utils/updateRating.ts"
+import pool from "./pg.js"
+import loginRouter from "./Routers/usersRouter.js"
+import { getRandomLocation } from "./utils/getRandomLocation.js"
+import askAI from "./utils/askAI.js"
+import getAPIKey from "./utils/getAPIKey.js"
+import updateRatings from "./utils/updateRating.js"
 
 dotenv.config()
 

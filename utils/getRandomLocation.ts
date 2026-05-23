@@ -1,4 +1,3 @@
-// utils/locations.ts
 
 const locations = [
     "🍳 Кухня",
