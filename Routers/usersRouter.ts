@@ -1,14 +1,20 @@
 import { Router } from "express"
 import pool from "../pg.ts"
 import bcrypt from "bcrypt"
-
+import {rateLimit} from "express-rate-limit"
 const router = Router()
-
+const limiter = rateLimit({
+    windowMs: 60 * 1000, 
+    limit: 5,            
+    message: { error: "Слишком много запросов. Попробуйте позже." },
+    standardHeaders: true,
+    legacyHeaders: false,
+})
 router.get("/test", (req, res) => {
     res.json({ message: "Роутер работает" })
 })
 
-router.post("/register", async(req, res) => { 
+router.post("/register",limiter, async(req, res) => { 
     try {
         let { name, pass }: { name: string, pass: string } = req.body
         
@@ -37,7 +43,7 @@ router.post("/register", async(req, res) => {
     }
 })
 
-router.post("/signin", async(req, res) => {
+router.post("/signin",limiter, async(req, res) => {
     try {
         const { name, pass }: { name: string, pass: string } = req.body
         
@@ -65,5 +71,6 @@ router.post("/signin", async(req, res) => {
         res.status(500).json({ otvet: "Ошибка сервера" })
     }
 })
+
 
 export default router
