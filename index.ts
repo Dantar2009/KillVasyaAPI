@@ -154,9 +154,9 @@ io.on("connection", async (socket) => {
     socket.on("sendMessage", async (data: { messageText: string, roomId: string }) => {
         if (!socket.data.user) return
         if (data.messageText.trim().length === 0) return
-
         const currentRoom = rooms.find(r => r.id === data.roomId)
         if (!currentRoom) return
+        if(!(currentRoom.bodyguard&&currentRoom.killer)) return
 
         if (currentRoom.killer?.name === socket.data.user.name) {
             if (currentRoom.killerText !== null) return
