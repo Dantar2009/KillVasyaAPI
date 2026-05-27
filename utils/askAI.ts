@@ -1,6 +1,11 @@
 import promptText from "../data/promptText.ts"
 import pool from "../pg.ts"
-import { AIAnswer } from "../types.ts"
+
+export type AIAnswer = {
+    winner: "killer" | "bodyguard",
+    description: string,
+    epitaph: string
+}
 
 const askAI = async (
     killerText: string,
