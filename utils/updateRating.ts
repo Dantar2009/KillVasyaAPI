@@ -1,7 +1,5 @@
-export type WinnerAndLoser = {
-    winner: number,
-    loser: number
-}
+import { WinnerAndLoser } from "../types.ts"
+
 
 function updateRatings(winnerRating: number, loserRating: number):WinnerAndLoser {
     const expected = 1 / (1 + Math.pow(10, (loserRating - winnerRating) / 400))

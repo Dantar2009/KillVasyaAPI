@@ -5,10 +5,13 @@ import cors from "cors"
 import dotenv from "dotenv"
 import pool from "./pg.ts"
 import loginRouter from "./Routers/usersRouter.ts"
+import statsRouter from "./Routers/statsRouter.ts"
 import { getRandomLocation } from "./utils/getRandomLocation.ts"
 import askAI from "./utils/askAI.ts"
 import getAPIKey from "./utils/getAPIKey.ts"
 import updateRatings from "./utils/updateRating.ts"
+import getRating from "./utils/getRating.ts"
+import getGraves from "./utils/getGraves.ts"
 
 dotenv.config()
 
@@ -25,6 +28,7 @@ app.use(cors({
 }))
 app.use(express.json())
 app.use("/users", loginRouter)
+app.use("/stats", statsRouter)
 app.get("/", (req, res) => {
     res.json({ ok: true })
 })
@@ -68,13 +72,10 @@ let rooms: Room[] = []
 io.on("connection", async (socket) => {
     const name = socket.handshake.query.name as string
     const pass = socket.handshake.query.pass as string
-    const newRating = await pool.query("SELECT id, name, rating FROM killvasyausers")
-    const sortedRating: RatingUser[] = newRating.rows.sort((a: RatingUser, b: RatingUser) => b.rating - a.rating)
-    console.log(sortedRating)
-    socket.emit("updateRatings", sortedRating)
-    const cemeteryObj = await pool.query(`SELECT * FROM cemetery`)
-    const cemetery: Grave[] = cemeteryObj.rows.reverse()
-    socket.emit("cemeteryUpdate", cemetery)
+    
+    socket.emit("updateRatings", await getRating())
+    
+    socket.emit("cemeteryUpdate", await getGraves())
     const searchUser = await pool.query(
         "SELECT * FROM killvasyausers WHERE name = $1 AND pass = $2",
         [name, pass]
