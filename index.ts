@@ -90,8 +90,9 @@ io.on("connection", async (socket) => {
 
     socket.on("createRoom", async (data) => {
         if (!socket.data.user) return
-
         if (data.role !== "killer" && data.role !== "bodyguard") return
+        const isOtherRoom=rooms.some((room:Room)=>room.bodyguard?.name===socket.data.user.name||room.killer?.name===socket.data.user.name)
+        if(isOtherRoom) return
 
         const player: playerInfo = {
             name: socket.data.user.name,
@@ -122,7 +123,8 @@ io.on("connection", async (socket) => {
 
         const currentRoom = rooms.find(room => room.id === roomId)
         if (!currentRoom) return
-
+        const isOtherRoom=rooms.some((room:Room)=>room.bodyguard?.name===socket.data.user.name||room.killer?.name===socket.data.user.name)
+        if(isOtherRoom) return
         if (currentRoom.killer?.name === socket.data.user?.name || currentRoom.bodyguard?.name === socket.data.user?.name) {
             socket.emit("error", "Ты уже в этой комнате")
             return
@@ -223,10 +225,11 @@ io.on("connection", async (socket) => {
 
     socket.on("leaveRoom", async (roomId: string) => {
         if (!socket.data.user) return
-
         const currentRoom = rooms.find(r => r.id === roomId)
         if (!currentRoom) return
-
+        const isKiller=currentRoom.killer?.name===socket.data.user.name
+        const isBodyguard=currentRoom.bodyguard?.name===socket.data.user.name
+        if(!isKiller&&!isBodyguard) return
         if (currentRoom.winner === "nowinner" && currentRoom.killer && currentRoom.bodyguard) {
             const leaverIsKiller = currentRoom.killer.name === socket.data.user.name
             const winner = leaverIsKiller ? currentRoom.bodyguard : currentRoom.killer
@@ -273,13 +276,18 @@ io.on("connection", async (socket) => {
         }
 
         if (currentRoom.killerReady && currentRoom.bodyguardReady) {
-            currentRoom.killerText = null
-            currentRoom.bodyguardText = null
-            currentRoom.killerReady = false
-            currentRoom.bodyguardReady = false
-            currentRoom.aiOtvet = ""
-            currentRoom.winner = "nowinner"
-            currentRoom.location = getRandomLocation()
+            const hasTexts = currentRoom.killerText !== null && currentRoom.bodyguardText !== null;
+            const hasAiAnswer = currentRoom.aiOtvet !== "" || currentRoom.winner !== "nowinner";
+            
+            if (hasTexts && hasAiAnswer) {
+                currentRoom.killerText = null;
+                currentRoom.bodyguardText = null;
+                currentRoom.killerReady = false;
+                currentRoom.bodyguardReady = false;
+                currentRoom.aiOtvet = "";
+                currentRoom.winner = "nowinner";
+                currentRoom.location = getRandomLocation();
+            }
         }
 
         io.emit("updateRoom", currentRoom)
