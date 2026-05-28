@@ -84,6 +84,8 @@ io.on("connection", async (socket) => {
     if (searchUser.rows.length > 0) {
         user = searchUser.rows[0]
         console.log("Подключился:", user.name, "Рейтинг:", user.rating)
+        socket.emit("ratingUpdate",user.rating)
+
     }
     socket.data.user = user
     socket.emit("roomsList", rooms)
@@ -241,7 +243,6 @@ io.on("connection", async (socket) => {
 
             await pool.query("UPDATE killvasyausers SET rating = $1 WHERE name = $2", [winner.rating, winner.name])
             await pool.query("UPDATE killvasyausers SET rating = $1 WHERE name = $2", [loser.rating, loser.name])
-            socket.emit("ratingUpdate", loser.rating)
         }
 
         if (currentRoom.killer?.name === socket.data.user.name) {
