@@ -84,7 +84,7 @@ io.on("connection", async (socket) => {
     if (searchUser.rows.length > 0) {
         user = searchUser.rows[0]
         console.log("Подключился:", user.name, "Рейтинг:", user.rating)
-        socket.emit("ratingUpdate",user.rating)
+        
 
     }
     socket.data.user = user
@@ -121,40 +121,50 @@ io.on("connection", async (socket) => {
     })
 
     socket.on("joinRoom", async (roomId) => {
-        if (!socket.data.user) return
+    if (!socket.data.user) return;
 
-        const currentRoom = rooms.find(room => room.id === roomId)
-        if (!currentRoom) return
-        const isOtherRoom=rooms.some((room:Room)=>room.bodyguard?.name===socket.data.user.name||room.killer?.name===socket.data.user.name)
-        if(isOtherRoom) return
-        if (currentRoom.killer?.name === socket.data.user?.name || currentRoom.bodyguard?.name === socket.data.user?.name) {
-            socket.emit("error", "Ты уже в этой комнате")
-            return
-        }
+    const currentRoom = rooms.find(room => room.id === roomId);
+    if (!currentRoom) return;
 
-        socket.join(currentRoom.id)
+    // Проверяем, не в другой ли комнате игрок (исключая текущую)
+    const isOtherRoom = rooms.some((room: Room) =>
+        room.id !== roomId &&
+        (room.bodyguard?.name === socket.data.user.name ||
+         room.killer?.name === socket.data.user.name)
+    );
+    if (isOtherRoom) return;
 
-        const player: playerInfo = {
-            name: socket.data.user.name,
-            rating: socket.data.user.rating
-        }
+    // Уже в этой комнате — просто переподключаем
+    if (currentRoom.killer?.name === socket.data.user?.name || 
+        currentRoom.bodyguard?.name === socket.data.user?.name) {
+        socket.join(currentRoom.id);
+        socket.emit("openRoom", roomId);
+        return;
+    }
 
-        if (currentRoom.killer === null) {
-            currentRoom.killer = player
-        } else if (currentRoom.bodyguard === null) {
-            currentRoom.bodyguard = player
-        } else {
-            socket.emit("error", "Комната заполнена")
-            return
-        }
+    socket.join(currentRoom.id);
 
-        if (currentRoom.killer && currentRoom.bodyguard) {
-            currentRoom.location = getRandomLocation()
-        }
+    const player: playerInfo = {
+        name: socket.data.user.name,
+        rating: socket.data.user.rating
+    };
 
-        socket.emit("openRoom", roomId)
-        io.emit("updateRoom", currentRoom)
-    })
+    if (currentRoom.killer === null) {
+        currentRoom.killer = player;
+    } else if (currentRoom.bodyguard === null) {
+        currentRoom.bodyguard = player;
+    } else {
+        socket.emit("error", "Комната заполнена");
+        return;
+    }
+
+    if (currentRoom.killer && currentRoom.bodyguard) {
+        currentRoom.location = getRandomLocation();
+    }
+
+    socket.emit("openRoom", roomId);
+    io.emit("updateRoom", currentRoom);
+});
 
     socket.on("sendMessage", async (data: { messageText: string, roomId: string }) => {
         if (!socket.data.user) return
