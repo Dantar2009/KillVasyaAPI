@@ -166,74 +166,96 @@ io.on("connection", async (socket) => {
     io.emit("updateRoom", currentRoom);
 });
 
-    socket.on("sendMessage", async (data: { messageText: string, roomId: string }) => {
-        if (!socket.data.user) return
-        if (data.messageText.trim().length === 0) return
-        const currentRoom = rooms.find(r => r.id === data.roomId)
-        if (!currentRoom) return
-        if(!(currentRoom.bodyguard&&currentRoom.killer)) return
+socket.on("sendMessage", async (data: { messageText: string, roomId: string }) => {
+    if (!socket.data.user) return
+    if (data.messageText.trim().length === 0) return
+    const currentRoom = rooms.find(r => r.id === data.roomId)
+    if (!currentRoom) return
+    if (!(currentRoom.bodyguard && currentRoom.killer)) return
 
-        if (currentRoom.killer?.name === socket.data.user.name) {
-            if (currentRoom.killerText !== null) return
-            currentRoom.killerText = data.messageText
-        }
-        else if (currentRoom.bodyguard?.name === socket.data.user.name) {
-            if (currentRoom.killerText === null) return
-            if (currentRoom.bodyguardText !== null) return
-            currentRoom.bodyguardText = data.messageText
-        }
-        else {
-            return
-        }
-        io.emit("updateRoom", currentRoom)
+    if (currentRoom.killer?.name === socket.data.user.name) {
+        if (currentRoom.killerText !== null) return
+        currentRoom.killerText = data.messageText
+    }
+    else if (currentRoom.bodyguard?.name === socket.data.user.name) {
+        if (currentRoom.killerText === null) return
+        if (currentRoom.bodyguardText !== null) return
+        currentRoom.bodyguardText = data.messageText
+    }
+    else {
+        return
+    }
+    io.emit("updateRoom", currentRoom)
 
-        if (currentRoom.killerText !== null && currentRoom.bodyguardText !== null) {
-            const aiOtvet = await askAI(
-                currentRoom.killerText,
-                currentRoom.bodyguardText,
-                currentRoom.location,
-                getAPIKey()
-            )
+    const isKiller = currentRoom.killer?.name === socket.data.user.name;
+    const targetPlayer = isKiller ? currentRoom.bodyguard : currentRoom.killer;
 
-            if (typeof aiOtvet === "string") {
-                currentRoom.aiOtvet = aiOtvet
-            } else {
-                currentRoom.winner = aiOtvet.winner
-                currentRoom.aiOtvet = aiOtvet.description
+    if (targetPlayer) {
+        const targetSocket = [...io.sockets.sockets.values()].find(s => s.data.user?.name === targetPlayer.name);
+        targetSocket?.emit("messageSound");
+    }
 
-                if (currentRoom.killer && currentRoom.bodyguard) {
-                    const isKillerWin = currentRoom.winner === "killer"
+    if (currentRoom.killerText !== null && currentRoom.bodyguardText !== null) {
+        const aiOtvet = await askAI(
+            currentRoom.killerText,
+            currentRoom.bodyguardText,
+            currentRoom.location,
+            getAPIKey()
+        )
 
-                    const newRatings = updateRatings(
-                        isKillerWin ? currentRoom.killer.rating : currentRoom.bodyguard.rating,
-                        isKillerWin ? currentRoom.bodyguard.rating : currentRoom.killer.rating
-                    )
+        if (typeof aiOtvet === "string") {
+            currentRoom.aiOtvet = aiOtvet
+        } else {
+            currentRoom.winner = aiOtvet.winner
+            currentRoom.aiOtvet = aiOtvet.description
+            const winnerName=aiOtvet.winner==="bodyguard"?currentRoom.bodyguard.name:currentRoom.killer.name
+            const allSockets = [...io.sockets.sockets.values()];
+            const winnerSocket = allSockets.find(s => s.data.user?.name === winnerName);
+            if (winnerSocket) winnerSocket.emit("createConfetti");
+            if (currentRoom.killer && currentRoom.bodyguard) {
+                const isKillerWin = currentRoom.winner === "killer"
 
-                    currentRoom.killer.rating = isKillerWin ? newRatings.winner : newRatings.loser
-                    currentRoom.bodyguard.rating = isKillerWin ? newRatings.loser : newRatings.winner
+                const newRatings = updateRatings(
+                    isKillerWin ? currentRoom.killer.rating : currentRoom.bodyguard.rating,
+                    isKillerWin ? currentRoom.bodyguard.rating : currentRoom.killer.rating
+                )
 
-                    await pool.query(
-                        "UPDATE killvasyausers SET rating = $1 WHERE name = $2",
-                        [currentRoom.killer.rating, currentRoom.killer.name]
-                    )
-                    await pool.query(
-                        "UPDATE killvasyausers SET rating = $1 WHERE name = $2",
-                        [currentRoom.bodyguard.rating, currentRoom.bodyguard.name]
-                    )
-                    if (isKillerWin) {
-                        const cemeteryObj = await pool.query(`SELECT * FROM cemetery`)
-                        const cemetery: Grave[] = cemeteryObj.rows
-                        io.emit("cemeteryUpdate", cemetery)
-                    }
+                currentRoom.killer.rating = isKillerWin ? newRatings.winner : newRatings.loser
+                currentRoom.bodyguard.rating = isKillerWin ? newRatings.loser : newRatings.winner
+
+                await pool.query(
+                    "UPDATE killvasyausers SET rating = $1 WHERE name = $2",
+                    [currentRoom.killer.rating, currentRoom.killer.name]
+                )
+                await pool.query(
+                    "UPDATE killvasyausers SET rating = $1 WHERE name = $2",
+                    [currentRoom.bodyguard.rating, currentRoom.bodyguard.name]
+                )
+                if (isKillerWin) {
+                    const cemeteryObj = await pool.query(`SELECT * FROM cemetery`)
+                    const cemetery: Grave[] = cemeteryObj.rows
+                    io.emit("cemeteryUpdate", cemetery)
                 }
             }
         }
-        io.emit("updateRoom", currentRoom)
-        const newRating = await pool.query("SELECT id, name, rating FROM killvasyausers")
-        const sortedRating: RatingUser[] = newRating.rows.sort((a: RatingUser, b: RatingUser) => b.rating - a.rating)
-        io.emit("updateRatings", sortedRating)
+        // 👉 Звук вердикта — всем в комнате, сразу после ответа AI
+        const killerName = currentRoom.killer?.name;
+        const bodyguardName = currentRoom.bodyguard?.name;
 
-    })
+        const allSockets = [...io.sockets.sockets.values()];
+
+        const killerSocket = allSockets.find(s => s.data.user?.name === killerName);
+        const bodyguardSocket = allSockets.find(s => s.data.user?.name === bodyguardName);
+
+        if (killerSocket) killerSocket.emit("messageSound");
+        if (bodyguardSocket) bodyguardSocket.emit("messageSound");
+    }
+
+    io.emit("updateRoom", currentRoom)
+    const newRating = await pool.query("SELECT id, name, rating FROM killvasyausers")
+    const sortedRating: RatingUser[] = newRating.rows.sort((a: RatingUser, b: RatingUser) => b.rating - a.rating)
+    io.emit("updateRatings", sortedRating)
+})
 
     socket.on("leaveRoom", async (roomId: string) => {
         if (!socket.data.user) return
