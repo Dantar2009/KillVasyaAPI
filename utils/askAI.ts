@@ -20,7 +20,7 @@ const askAI = async (
             "Content-Type": "application/json"
         },
         body: JSON.stringify({
-            model: "openai/gpt-oss-120b:free",
+            model: "poolside/laguna-xs-2.1:free",
             messages: [
                 {
                     role: "system",
