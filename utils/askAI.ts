@@ -20,7 +20,7 @@ const askAI = async (
             "Content-Type": "application/json"
         },
         body: JSON.stringify({
-            model: "poolside/laguna-xs-2.1:free",
+            model: "inclusionai/ling-3.0-flash-sante:free",
             messages: [
                 {
                     role: "system",
